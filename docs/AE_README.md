@@ -81,6 +81,18 @@ SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
 
 ## Full Review
 
+For a small representative experiment subset:
+
+```bash
+python3 experiment_small.py
+```
+
+Inside Docker:
+
+```bash
+docker run --rm quak-nqa python3 /quak/experiment_small.py
+```
+
 TODO
 
 ---

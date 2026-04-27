@@ -67,9 +67,9 @@ It is based on the current repository state and the open items in Harun's list.
     docker run --rm quak-nqa python3 /quak/experiment.py --help
     ```
 
-- [ ] Decide whether the runtime image should include `experiment_small.py`.
-  - If reviewers are expected to run the small experiment subset, copy it into the image.
-  - Document it in `docs/AE_README.md`.
+- [x] Decide whether the runtime image should include `experiment_small.py`.
+  - Decision: include it in the runtime image so reviewers can run the small
+    experiment subset from Docker.
   - Verify inside the container:
     ```bash
     docker run --rm quak-nqa python3 /quak/experiment_small.py --help
@@ -122,16 +122,6 @@ It is based on the current repository state and the open items in Harun's list.
   - After upload, download the archive once and verify the checksum.
 
 ## Smoke Test
-
-- [x] Decide whether to keep the current shell smoke test only, or also add Harun's requested CTest smoke test.
-  - Decision: keep the shell script as the evaluator-facing smoke entry point,
-    and also register `smoke_quick` as a CTest entry.
-  - `scripts/smoke-test.sh --quick` is the default runtime smoke test.
-  - `scripts/smoke-test.sh --full` runs quick smoke first, then the registered
-    sanity/correctness CTest suite from `BUILD_DIR`.
-  - The CMake targets are:
-    - `cmake --build build --target smoke-test`
-    - `cmake --build build --target smoke-test-full`
 
 - [ ] Verify the shell smoke test from a clean native build.
   - Commands:
@@ -236,12 +226,15 @@ It is based on the current repository state and the open items in Harun's list.
 - [ ] Verify GitHub Actions CI for regular build/test.
   - Workflow:
     - `.github/workflows/ci-build-and-test.yml`
+  - Windows has been removed from the matrix because it is not supported and
+    fails noisily.
   - Confirm it builds tests before running `ctest`.
-  - Confirm branch filters are correct for the submission branch.
+  - Branch filters target `main`.
 
 - [ ] Verify GitHub Actions CI for Docker.
   - Workflow:
     - `.github/workflows/docker-build.yml`
+  - Branch filters target `main`.
   - Confirm the `--quick` smoke command still matches `scripts/smoke-test.sh`.
   - Confirm Docker build includes CTest.
   - Confirm Docker runtime smoke test passes.
@@ -251,7 +244,10 @@ It is based on the current repository state and the open items in Harun's list.
   - CTest.
   - Docker build.
   - Docker smoke test.
-  - Small experiment subset.
+  - Small experiment subset, for example:
+    ```bash
+    python3 experiment_small.py
+    ```
 
 - [ ] Check macOS locally.
   - Native build if supported.

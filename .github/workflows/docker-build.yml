@@ -2,9 +2,9 @@ name: CI (Docker Build and Smoke Test)
 
 on:
   push:
-    branches: ["playground"]
+    branches: ["main"]
   pull_request:
-    branches: ["playground"]
+    branches: ["main"]
 
 jobs:
   docker:
