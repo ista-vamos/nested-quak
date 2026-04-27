@@ -49,9 +49,9 @@ COPY --from=builder /opt/quak-build/build/quak-experiment-single          ./quak
 COPY --from=builder /opt/quak-build/samples/                              ./samples/
 COPY --from=builder /opt/quak-build/docs/AE_README.md                     ./AE_README.md
 COPY --from=builder /opt/quak-build/docs/CLI.md                           ./docs/CLI.md
-COPY --from=builder /opt/quak-build/docs/assumptions.md                   ./docs/assumptions.md
 COPY --from=builder /opt/quak-build/scripts/smoke-test.sh                 ./scripts/smoke-test.sh
 COPY --from=builder /opt/quak-build/experiment.py                         ./experiment.py
+COPY --from=builder /opt/quak-build/src/archived/experiment_skip_oot_oom.py ./src/archived/experiment_skip_oot_oom.py
 COPY --from=builder /opt/quak-build/LICENSE                               ./LICENSE
 
 ENV PATH="/quak:${PATH}"

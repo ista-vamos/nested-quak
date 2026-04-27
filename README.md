@@ -46,6 +46,8 @@ compiled executables under `build/` or another out-of-tree build directory.
 |---------|----------------|
 | `cmake --build build` | Library + `quak-nested` CLI |
 | `cmake --build build --target tests` | All registered test executables |
+| `cmake --build build --target smoke-test` | Quick artifact smoke test |
+| `cmake --build build --target smoke-test-full` | Quick smoke test plus registered CTest suite |
 | `cmake --build build --target examples` | Example programs |
 | `cmake --build build --target experiments` | Experiment and probe runners |
 | `ctest --test-dir build --output-on-failure` | Run all registered tests |
@@ -61,6 +63,10 @@ cmake --build build --target tests
 ctest --test-dir build -N
 ctest --test-dir build --output-on-failure
 ./build/test_universality_correctness # or run any registered test executable directly
+
+# Smoke tests
+cmake --build build --target smoke-test
+cmake --build build --target smoke-test-full
 
 # Examples
 cmake --build build --target examples
@@ -80,7 +86,6 @@ cmake --build build --target experiments
 | `-DCMAKE_BUILD_TYPE=Release` | Release | Build type (Release / Debug) |
 | `-DENABLE_SCC_SEARCH_OPT=ON` | ON | SCC-based optimization in FORKLIFT |
 | `-DENABLE_IPO=ON` | ON | Link-time (inter-procedural) optimizations |
-| `-DNORMALIZE_MIXED_SIGN=OFF` | OFF | When ON: auto-normalize mixed-sign child weights for LimAvg+SumPlus/SumMinus (emits a warning). When OFF (default): reject with a hard error. |
 
 ---
 
@@ -108,12 +113,19 @@ Applied to the weights within a single child run to produce a return value:
 | `Max_f` | Maximum weight seen during the child run |
 | `Min_f` | Minimum weight seen during the child run |
 | `SumB` | Bounded sum of weights (requires a `bound` parameter) |
-| `SumPlus` | Sum of positive weights |
-| `SumMinus` | Sum of negative weights (negated) |
+| `SumPlus` | Sum over non-negative child weights |
+| `SumMinus` | Sum over non-positive child weights |
+
+`SumPlus` and `SumMinus` are currently supported only for sign-uniform child
+weights: use `SumPlus` with non-negative child weights and `SumMinus` with
+non-positive child weights. Mixed-sign child automata are not supported.
 
 ### Supported Combinations
 
 Not every (finVal, infVal) pair is supported for every decision problem:
+
+For `SumPlus` and `SumMinus`, the support below assumes the sign restriction
+stated above.
 
 **Non-emptiness:**
 
@@ -362,7 +374,7 @@ The flattening approach depends on the aggregator combination:
 
 | finVal | infVal | Non-emptiness strategy |
 |--------|--------|------------------------|
-| SumPlus/SumMinus | Inf, Sup, LimInf, LimSup | Specialized flattening for extremal parents and monotone children |
+| SumPlus/SumMinus | Inf, Sup, LimInf, LimSup | Specialized flattening for extremal parents and sign-uniform monotone children |
 | SumPlus | LimSupAvg | Sup-based fast path, then SumB fallback |
 | SumMinus | LimInfAvg, LimSupAvg | Pseudo-determinization + synchronization |
 | Max_f/Min_f | Inf, Sup, LimInf, LimSup | Specialized flattening for extremal parents and monotone children |
@@ -383,42 +395,35 @@ accepted by the flattened automaton. Rejected flattened words are ignored.
 
 ### Structural
 
-- **Single initial state** per automaton (parent and each child). Determined by the source state of the first transition.
-- **Completeness**: All automata must be complete (total). For every state `q` and symbol `a`, there must be at least one transition from `q` labeled `a`. Incomplete automata are completed by adding a sink state.
-- **Immutability**: Automata are immutable after construction.
-- **State ownership**: Each state object is owned by exactly one automaton instance.
+- **Initial state**: Each automaton has one initial state, determined by the source state of the first transition.
+- **Completeness**: Inputs should be total for relevant states and symbols. Some decision paths complete automata internally by adding sink states.
+- **Immutability and ownership**: Automata are treated as immutable after construction, and each state object is owned by exactly one automaton.
 
 ### Internal Details: SCC and Reachability
 
-- SCCs are computed via Tarjan's algorithm during construction and are never recomputed.
-- State tags: `tag >= 0` = reachable (value is SCC ID); `tag == -1` = unreachable.
-- Lower SCC IDs are reachable from higher SCC IDs.
-- Unreachable states are trimmed during construction.
+SCCs are computed with Tarjan's algorithm during construction and are not recomputed. State tags encode reachability and SCC ID (`tag >= 0`) or unreachable states (`tag == -1`); lower SCC IDs are reachable from higher IDs, and unreachable states are trimmed during construction.
 
 ### Non-Determinism
 
-Non-determinism is resolved by the **Supremum** function: among all possible runs, the one producing the highest value is chosen.
+Non-determinism is resolved by the **Supremum** function: among all possible runs, the run producing the highest value is chosen.
 
 ### Nested-Specific
 
-- **Child index 0** is always the dummy child placeholder. It has no alphabet and no transitions in the input file, and it is exempt from non-dummy child final-state requirements.
-- **Final state declarations** are mandatory for non-nested automata, the parent, and non-dummy children. Use `final: all` for the original all-states-final behavior.
-- **Child final states** are mandatory for non-dummy children. The parser aborts if a `@CHILD n` (n >= 1) section has no `final:` declaration.
-- **Parent final states** are mandatory. Use `final: state1 state2 ...` for an explicit subset or `final: all` for all parent states.
-- **Alphabet synchronization**: parent and all non-dummy children must use the same alphabet.
-- **Silent/no-child parent steps**: Parent weight `0` invokes the dummy child and emits no child value. The `SILENT` keyword (stored as max float) is also allowed only in the parent for generated silent steps. Children should not use `SILENT`.
+- **Child index 0** is the dummy/no-child placeholder. It has no alphabet or input transitions, emits no child value, and is exempt from non-dummy child final-state requirements.
+- **Final states** are mandatory for non-nested automata, the parent, and non-dummy children. Use `final: state1 state2 ...` for an explicit subset or `final: all` for the original all-states-final behavior.
+- **Alphabet synchronization**: the parent and all non-dummy children must use the same alphabet.
+- **Silent/no-child parent steps**: Parent weight `0` invokes the dummy child. `SILENT` is stored as max float and is reserved for generated parent silent transitions; children must not use `SILENT`.
+- **SumPlus/SumMinus signs**: `SumPlus` assumes non-negative child weights, and `SumMinus` assumes non-positive child weights. Mixed-sign children are not currently supported for these aggregators.
 
 ### Weight Precision
 
-- Weights are `float` values.
-- Weight comparisons use epsilon tolerance: `WEIGHT_EQ_EPSILON = 1e-5`.
-- Hexadecimal float representation is also supported for exact bit-level specification.
+Weights are `float` values, comparisons use `WEIGHT_EQ_EPSILON = 1e-5`, and hexadecimal float representation is supported for exact bit-level specification.
 
 ### Acceptance
 
-- **Parent**: A parent run is accepting if it visits a final state infinitely often **and** invokes a non-silent child infinitely often. Use `final: all` when acceptance should reduce to the non-silent child condition.
-- **Children**: Accept finite words. A child run terminates and produces a value when it reaches a final state.
-- **Flattened automata**: Use Buchi acceptance. The flattening encodes both conditions (parent final states and infinitely many non-silent invocations) into the accepting-state set of the flattened automaton.
+- **Parent**: A parent run is accepting if it visits a final state infinitely often and invokes a non-silent child infinitely often. Use `final: all` when acceptance should reduce to the non-silent child condition.
+- **Children**: Accept finite words; a child run terminates and produces a value when it reaches a final state.
+- **Flattened automata**: Use Buchi acceptance. Flattening encodes parent final-state visits and infinitely many non-silent invocations into the accepting-state set.
 
 ---
 

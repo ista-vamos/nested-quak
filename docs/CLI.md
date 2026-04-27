@@ -53,6 +53,10 @@ these two checks.
 
 Nested files are auto-detected by the `@PARENT` marker.
 
+`SumPlus` and `SumMinus` are currently supported only for sign-uniform child
+weights: use `SumPlus` with non-negative child weights and `SumMinus` with
+non-positive child weights. Mixed-sign child automata are not supported.
+
 ### Supported Nested Combinations
 
 | Decision  | Finite Agg     | Infinite Agg             |
@@ -60,6 +64,8 @@ Nested files are auto-detected by the `@PARENT` marker.
 | non-empty | SumPlus        | Inf, Sup, LimInf, LimSup, LimSupAvg |
 | non-empty | Max_f, Min_f, SumB, SumMinus | All          |
 | universal | Max_f, Min_f, SumB, SumPlus, SumMinus | Inf, LimInf, Sup, LimSup |
+
+The `SumPlus` and `SumMinus` entries assume the sign restriction above.
 
 For non-nested automata, `universal` quantifies over Buchi-accepted words
 according to the declared final states. For nested automata, `universal` quantifies over

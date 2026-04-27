@@ -130,21 +130,46 @@ add_custom_target(tests
 )
 
 # =============================================================================
-# SMOKE TEST (built+run with: make smoke-test)
-# Runs the representative smoke test + backward-compat test only (~1 s).
+# EXPERIMENTS (built with: make experiments)
 # =============================================================================
+# Single automaton experiment runner (detailed analysis)
+add_quak_experiment(quak-experiment-single src/quak-experiment-single.cpp)
+
+# =============================================================================
+# SMOKE TESTS
+# =============================================================================
+set(QUAK_SMOKE_ENV
+    QUAK=$<TARGET_FILE:quak-nested>
+    QUAK_EXP=$<TARGET_FILE:quak-experiment-single>
+    BUILD_DIR=${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME smoke_quick
+    COMMAND ${CMAKE_COMMAND} -E env ${QUAK_SMOKE_ENV}
+            bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh --quick
+)
+set_tests_properties(smoke_quick PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    LABELS smoke
+)
+
+add_dependencies(tests quak-experiment-single)
+
 add_custom_target(smoke-test
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh
+    COMMAND ${CMAKE_COMMAND} -E env ${QUAK_SMOKE_ENV}
+            bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh --quick
     DEPENDS quak-nested quak-experiment-single
     COMMENT "Running smoke test (quick mode)"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# =============================================================================
-# EXPERIMENTS (built with: make experiments)
-# =============================================================================
-# Single automaton experiment runner (detailed analysis)
-add_quak_experiment(quak-experiment-single src/quak-experiment-single.cpp)
+add_custom_target(smoke-test-full
+    COMMAND ${CMAKE_COMMAND} -E env ${QUAK_SMOKE_ENV}
+            bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh --full
+    DEPENDS quak-nested quak-experiment-single tests
+    COMMENT "Running smoke test plus registered CTest suite"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 
 # Experimental backend comparison tools
 set(EXPERIMENT_TOOL_SOURCES

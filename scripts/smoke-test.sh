@@ -7,7 +7,7 @@
 #   It checks that the artifact is correctly installed and that all components
 #   start up and run without error.
 #
-# WHAT IS TESTED (four sections)
+# WHAT IS TESTED IN QUICK MODE (four sections)
 #   [1] Binaries        — quak-nested and quak-experiment-single are present
 #                         and executable. Catches wrong-architecture images or
 #                         a broken Dockerfile COPY step.
@@ -25,6 +25,12 @@
 #                         ("= 1" / "= 0"). Not a correctness claim; a crash or
 #                         malformed output here indicates a build/install defect.
 #
+# WHAT IS TESTED IN FULL MODE
+#   Full mode runs all quick checks first, then runs the registered CTest suite
+#   from the configured build directory. This is intended for native/source
+#   checkouts; the runtime Docker image intentionally does not carry build
+#   artifacts or test executables.
+#
 # WHAT IS NOT TESTED
 #   - Paper results (runtimes, scalability) -> see full review instructions
 #     in AE_README.md.
@@ -32,8 +38,10 @@
 #     runs are part of the full review.
 #
 # USAGE
-#   bash scripts/smoke-test.sh
-#   QUAK=./build/quak-nested QUAK_EXP=./build/quak-experiment-single bash scripts/smoke-test.sh
+#   bash scripts/smoke-test.sh [--quick]
+#   bash scripts/smoke-test.sh --full
+#   QUAK=./build/quak-nested QUAK_EXP=./build/quak-experiment-single bash scripts/smoke-test.sh --quick
+#   BUILD_DIR=./build bash scripts/smoke-test.sh --full
 #
 # Exit code: 0 = all checks passed, 1 = any check failed.
 
@@ -42,17 +50,44 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if [[ $# -gt 0 ]]; then
-  echo "Usage: $0" >&2
+usage() {
+  echo "Usage: $0 [--quick|--full]" >&2
+}
+
+MODE="quick"
+if [[ $# -gt 1 ]]; then
+  usage
   exit 1
+elif [[ $# -eq 1 ]]; then
+  case "$1" in
+    --quick)
+      MODE="quick"
+      ;;
+    --full)
+      MODE="full"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
 fi
 
 START=$SECONDS
 
 QUAK="${QUAK:-$REPO_ROOT/quak-nested}"
 QUAK_EXP="${QUAK_EXP:-$REPO_ROOT/quak-experiment-single}"
+BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
 SAMPLES="$REPO_ROOT/samples"
 INPUTS="$SAMPLES/tests/correctness"
+SECTIONS=4
+if [[ "$MODE" == "full" ]]; then
+  SECTIONS=5
+fi
 
 PASS=0
 FAIL=0
@@ -98,7 +133,7 @@ check_path() {
 # A failure here means the Docker image was not built correctly or the
 # wrong architecture image was loaded.
 # -----------------------------------------------------------------------
-echo "==> [1/4] Checking binaries..."
+echo "==> [1/$SECTIONS] Checking binaries..."
 check_path "quak-nested exists and is executable" -x "$QUAK"
 check_path "quak-experiment-single exists and is executable" -x "$QUAK_EXP"
 
@@ -108,7 +143,7 @@ check_path "quak-experiment-single exists and is executable" -x "$QUAK_EXP"
 # present. A failure here means the COPY step in the Dockerfile is wrong
 # or the files were missing from the build context.
 # -----------------------------------------------------------------------
-echo "==> [2/4] Checking input files..."
+echo "==> [2/$SECTIONS] Checking input files..."
 check_path "samples/tests/correctness/ directory present" -d "$INPUTS"
 check_path "samples/ directory present" -d "$SAMPLES"
 check_path "samples/A.txt present (non-nested fixture)" -f "$SAMPLES/A.txt"
@@ -151,7 +186,7 @@ fi
 # and its argument parser initialised without error. A failure here means
 # the experiment workflow would crash before running a single instance.
 # -----------------------------------------------------------------------
-echo "==> [3/4] Checking Python environment and experiment script..."
+echo "==> [3/$SECTIONS] Checking Python environment and experiment script..."
 run_check "python3 is available" "Python 3" python3 --version
 run_check "experiment.py loads and accepts --help" \
   "usage" python3 "$REPO_ROOT/experiment.py" --help
@@ -165,7 +200,7 @@ run_check "experiment.py loads and accepts --help" \
 # CLI syntax: quak-nested INPUTFILE ACTION VALF FINVAL THRESHOLD
 # Output format: "= 1" (non-empty/universal) or "= 0" (empty/not-universal)
 # -----------------------------------------------------------------------
-echo "==> [4/4] Checking decision procedures (one per flattening path)..."
+echo "==> [4/$SECTIONS] Checking decision procedures (one per flattening path)..."
 
 run_check "flatten_regular      LimSupAvg/Max_f   (non-empty, expect = 1)" \
   "= 1" "$QUAK" "$INPUTS/baseline_det.txt" non-empty LimSupAvg Max_f 4
@@ -184,6 +219,17 @@ run_check "universality         LimSup/Max_f      (universal, expect = 1)" \
 run_check "non-nested curated  LimSup            (non-empty, expect = 1)" \
   "= 1" "$QUAK" "$SAMPLES/A.txt" non-empty LimSup 0
 
+if [[ "$MODE" == "full" ]]; then
+  echo "==> [5/$SECTIONS] Running registered sanity/correctness CTest suite..."
+  if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "  FAIL [build directory present] -- not found: $BUILD_DIR"
+    FAIL=$((FAIL + 1))
+  else
+    run_check "ctest registered suite" "" \
+      ctest --test-dir "$BUILD_DIR" --output-on-failure -E '^smoke_quick$'
+  fi
+fi
+
 # -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
@@ -191,9 +237,9 @@ echo ""
 TOTAL=$((PASS + FAIL))
 ELAPSED=$((SECONDS - START))
 if [[ $FAIL -eq 0 ]]; then
-  echo "SMOKE PASSED -- $PASS/$TOTAL checks, ${ELAPSED}s wall"
+  echo "SMOKE PASSED ($MODE) -- $PASS/$TOTAL checks, ${ELAPSED}s wall"
   exit 0
 else
-  echo "SMOKE FAILED -- $FAIL/$TOTAL checks failed (${ELAPSED}s wall)"
+  echo "SMOKE FAILED ($MODE) -- $FAIL/$TOTAL checks failed (${ELAPSED}s wall)"
   exit 1
 fi

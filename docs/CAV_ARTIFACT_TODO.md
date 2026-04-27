@@ -3,6 +3,41 @@
 This checklist tracks the remaining artifact work for the CAV 2026 submission.
 It is based on the current repository state and the open items in Harun's list.
 
+## Repository And Zenodo Split
+
+- [ ] Keep the GitHub repository as the developer-facing source release.
+  - It should remain buildable from a fresh clone with the normal CMake workflow.
+  - Include source code, examples, samples, docs, tests, README, license, and CI.
+  - Do not require Docker for local compilation.
+  - After the artifact is final, tag the exact release state, for example `v1.0-artifact`.
+
+- [ ] Make the Zenodo submission the frozen artifact-evaluation package.
+  - It should be self-contained and not depend on a moving GitHub branch.
+  - Include Docker material, artifact README, scripts, checksums, license, and either:
+    - a full `source/` snapshot, or
+    - a `quak-source.tar.gz` archive made from the tagged GitHub release.
+  - Prefer bundling the exact source snapshot over cloning from GitHub during evaluation.
+
+- [ ] Use a clear Zenodo package layout.
+  - Suggested layout:
+    ```text
+    quak-ae-artifact/
+      README_AE.md
+      Dockerfile
+      docker/
+      scripts/
+      source/
+      expected-output/
+      SHA256SUMS
+      LICENSE
+    ```
+  - If using a compressed source snapshot instead of `source/`, replace `source/` with `quak-source.tar.gz`.
+
+- [ ] Ensure the Zenodo README is evaluator-oriented.
+  - Cover contents, hardware/software requirements, quick start, Docker load/run commands, native build commands, paper-claim reproduction commands, expected output, approximate runtimes, and troubleshooting.
+  - Include a table mapping paper claims, figures, or representative examples to exact commands.
+  - Record the GitHub release tag and Zenodo DOI once known.
+
 ## Immediate Submission Package
 
 - [ ] Build the final Docker image from a clean checkout.
@@ -13,23 +48,20 @@ It is based on the current repository state and the open items in Harun's list.
   - Confirm that the Docker build runs the full CTest suite in the builder stage.
   - Save the build log or record the commit/state used for the final image.
 
-- [ ] Fix the Docker smoke-test command mismatch.
-  - Current issue: `.github/workflows/docker-build.yml` runs:
+- [x] Fix the Docker smoke-test command mismatch.
+  - Resolved by teaching `scripts/smoke-test.sh` to accept `--quick` as the
+    default quick smoke test mode.
+  - `.github/workflows/docker-build.yml` runs:
     ```bash
     docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     ```
-  - Current script behavior: `scripts/smoke-test.sh` rejects all arguments.
-  - Choose one fix:
-    - Remove `--quick` from the workflow, or
-    - Teach `scripts/smoke-test.sh` to accept `--quick` as an alias for the existing smoke test.
   - Re-run the Docker smoke test after the fix.
 
-- [ ] Fix runtime Docker contents needed by `experiment.py`.
-  - Current issue: the runtime image copies `experiment.py`, but `experiment.py` imports:
+- [x] Fix runtime Docker contents needed by `experiment.py`.
+  - The runtime image now copies the helper imported by `experiment.py`:
     ```text
     src/archived/experiment_skip_oot_oom.py
     ```
-  - Add that helper file to the runtime image, or move/refactor the helper into a reviewer-facing script location.
   - Verify inside the container:
     ```bash
     docker run --rm quak-nqa python3 /quak/experiment.py --help
@@ -59,7 +91,7 @@ It is based on the current repository state and the open items in Harun's list.
   - Confirm the load command works on a clean machine:
     ```bash
     docker load < quak-nqa-docker-image.tar.gz
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh
+    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     ```
 
 - [ ] Create the final artifact zip.
@@ -91,26 +123,26 @@ It is based on the current repository state and the open items in Harun's list.
 
 ## Smoke Test
 
-- [ ] Decide whether to keep the current shell smoke test only, or also add Harun's requested CTest smoke test.
-  - Current state:
-    - `scripts/smoke-test.sh` exists.
-    - `make smoke-test` exists through the top-level `CMakeLists.txt`.
-    - No `src/tests/correctness_tests/test_smoke.cpp` appears registered in CTest.
-  - If matching Harun's list exactly matters, add `src/tests/correctness_tests/test_smoke.cpp` and register it with `add_quak_test`.
+- [x] Decide whether to keep the current shell smoke test only, or also add Harun's requested CTest smoke test.
+  - Decision: keep the shell script as the evaluator-facing smoke entry point,
+    and also register `smoke_quick` as a CTest entry.
+  - `scripts/smoke-test.sh --quick` is the default runtime smoke test.
+  - `scripts/smoke-test.sh --full` runs quick smoke first, then the registered
+    sanity/correctness CTest suite from `BUILD_DIR`.
+  - The CMake targets are:
+    - `cmake --build build --target smoke-test`
+    - `cmake --build build --target smoke-test-full`
 
 - [ ] Verify the shell smoke test from a clean native build.
   - Commands:
     ```bash
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-    cmake --build build -j
-    cmake --build build --target experiments -j
-    cp build/quak-nested ./quak-nested
-    cp build/quak-experiment-single ./quak-experiment-single
-    bash scripts/smoke-test.sh
+    cmake --build build --target smoke-test -j
+    cmake --build build --target smoke-test-full -j
     ```
   - Expected ending:
     ```text
-    SMOKE PASSED -- 16/16 checks, 0s wall
+    SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
     ```
   - Record actual wall time on the test machine.
 
@@ -118,7 +150,7 @@ It is based on the current repository state and the open items in Harun's list.
   - Commands:
     ```bash
     docker build -t quak-nqa .
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh
+    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     ```
   - Confirm the smoke test passes from the runtime image, not only from the source tree.
 
@@ -126,7 +158,7 @@ It is based on the current repository state and the open items in Harun's list.
   - Commands:
     ```bash
     docker load < quak-nqa-docker-image.tar.gz
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh
+    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     ```
   - Confirm Docker architecture compatibility, especially on Apple Silicon.
   - If the artifact is x86_64-only, document that requirement clearly in `docs/AE_README.md`.
@@ -164,7 +196,7 @@ It is based on the current repository state and the open items in Harun's list.
   - Include exact commands:
     ```bash
     docker load < quak-nqa-docker-image.tar.gz
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh
+    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     docker run --rm -it quak-nqa
     ```
   - Include the expected smoke-test output.
@@ -210,7 +242,7 @@ It is based on the current repository state and the open items in Harun's list.
 - [ ] Verify GitHub Actions CI for Docker.
   - Workflow:
     - `.github/workflows/docker-build.yml`
-  - Fix the `--quick` mismatch before relying on this workflow.
+  - Confirm the `--quick` smoke command still matches `scripts/smoke-test.sh`.
   - Confirm Docker build includes CTest.
   - Confirm Docker runtime smoke test passes.
 
