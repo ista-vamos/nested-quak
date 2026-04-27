@@ -8,7 +8,8 @@
 
 **Zenodo DOI:** pending upload
 
-**Checksums:** the final package will include `SHA256SUMS`.
+**Checksums:** `SHA256SUMS` will be uploaded beside the final package on
+Zenodo.
 
 ## Artifact Contents
 
@@ -18,7 +19,6 @@ The final artifact package has the following intended layout:
 quak-cav26-artifact/
   README_AE.md
   LICENSE
-  SHA256SUMS
   quak-nqa-docker-image.tar.gz
   source/
     CMakeLists.txt
@@ -103,6 +103,18 @@ docker run --rm -it quak-nqa
 The shell starts in `/quak`. From there, reviewers can run
 `scripts/smoke-test.sh --quick`, inspect `samples/`, or invoke the main CLI
 with `./quak-nested`.
+
+The packaged Docker image is built for `linux/amd64`. On Apple Silicon Macs,
+Docker Desktop can usually run this image through emulation. Reviewers who want
+a native Docker image for their platform may instead rebuild from the
+`source/` directory:
+
+```bash
+docker build -t quak-nqa .
+```
+
+The Docker build runs the registered CTest suite in the builder stage, so a
+successful rebuild also verifies the packaged source on that platform.
 
 ### From Source
 
@@ -245,6 +257,9 @@ status categories, and benchmark coverage should match.
 
 - **Windows/MSVC:** not officially supported. Linux and macOS source builds are
   the supported native workflows.
+- **Apple Silicon Docker:** the packaged image is `linux/amd64` and may run
+  through Docker Desktop emulation. Rebuilding the image from `source/` can
+  produce a native image for the local platform.
 - **Benchmark scale:** some full benchmark cells may time out or exceed the
   30 GB memory limit. These outcomes are expected benchmark data, not smoke-test
   failures.
@@ -255,7 +270,8 @@ Before submission, the final package should satisfy:
 
 - `README_AE.md` contains the final artifact version, Zenodo DOI, and checksum
   location.
-- `SHA256SUMS` records checksums for the artifact zip and Docker image tarball.
+- `SHA256SUMS` is uploaded beside the artifact zip and records checksums for
+  the artifact zip and Docker image tarball.
 - `quak-nqa-docker-image.tar.gz` loads successfully with `docker load`.
 - `docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick` passes.
 - The `source/` snapshot builds natively with the commands above.

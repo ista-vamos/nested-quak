@@ -1,281 +1,286 @@
 # CAV Artifact TODO
 
-This checklist tracks the remaining artifact work for the CAV 2026 submission.
-It is based on the current repository state and the open items in Harun's list.
+This is the remaining CAV 2026 artifact runbook. It assumes the resolved
+packaging policy: `SHA256SUMS` is **not** inside the artifact zip; it is
+uploaded beside the zip on Zenodo.
 
-## Repository And Zenodo Split
+Do the steps in order. If any source-facing file changes after Step 0
+(`docs/AE_README.md`, `Dockerfile`, scripts, source, samples, tests, or
+results/paper), go back to Step 0 and rerun the affected build, validation, and
+packaging steps.
 
-- [ ] Keep the GitHub repository as the developer-facing source release.
-  - It should remain buildable from a fresh clone with the normal CMake workflow.
-  - Include source code, examples, samples, docs, tests, README, license, and CI.
-  - Do not require Docker for local compilation.
-  - After the artifact is final, tag the exact release state, for example `v1.0-artifact`.
+## 0. Finish Metadata And Source Inputs
 
-- [ ] Make the Zenodo submission the frozen artifact-evaluation package.
-  - It should be self-contained and not depend on a moving GitHub branch.
-  - Include Docker material, artifact README, scripts, checksums, license, and either:
-    - a full `source/` snapshot, or
-    - a `quak-source.tar.gz` archive made from the tagged GitHub release.
-  - Prefer bundling the exact source snapshot over cloning from GitHub during evaluation.
+- [ ] Review and keep the current artifact-preparation changes.
+  - `docs/AE_README.md`
+  - `docs/CAV_ARTIFACT_TODO.md`
+  - `scripts/package-ae.sh`
 
-- [ ] Use a clear Zenodo package layout.
-  - Suggested layout:
-    ```text
-    quak-ae-artifact/
-      README_AE.md
-      Dockerfile
-      docker/
-      scripts/
-      source/
-      expected-output/
-      SHA256SUMS
-      LICENSE
-    ```
-  - If using a compressed source snapshot instead of `source/`, replace `source/` with `quak-source.tar.gz`.
+- [ ] Make sure `scripts/package-ae.sh` is tracked before the final clean
+  checkout/build. The script stages the source snapshot and should be part of
+  the submitted source.
 
-- [ ] Ensure the Zenodo README is evaluator-oriented.
-  - Cover contents, hardware/software requirements, quick start, Docker load/run commands, native build commands, paper-claim reproduction commands, expected output, approximate runtimes, and troubleshooting.
-  - Include a table mapping paper claims, figures, or representative examples to exact commands.
-  - Record the GitHub release tag and Zenodo DOI once known.
+- [ ] Treat `quak-nqa-linux-amd64.tar.gz` as an old non-final local archive.
+  Do not upload it and do not include it in the final package.
 
-## Immediate Submission Package
+- [ ] Create a Zenodo draft and reserve the **version DOI** before the final
+  Docker build. The Docker image copies `docs/AE_README.md`, so the DOI and
+  artifact version must be in the README before building the image.
 
-- [ ] Build the final Docker image from a clean checkout.
-  - Command:
+- [ ] Fill final metadata in `docs/AE_README.md`.
+  - Artifact version, for example `v1.0-cav26-ae`.
+  - Zenodo version DOI, not the concept DOI.
+  - Checksum policy/location: `SHA256SUMS` uploaded beside the artifact zip.
+
+- [ ] Confirm the AE README has no unresolved placeholders.
+  ```bash
+  ! grep -nE 'pending|TODO|TBD' docs/AE_README.md
+  ```
+
+- [ ] Record the exact source state used for the final build.
+  ```bash
+  git status --short --branch
+  git rev-parse HEAD
+  ```
+  The final build should be from a clean, intentional state. Untracked scratch
+  archives are acceptable only if they are explicitly excluded from packaging.
+
+## 1. Final Native Build And Tests
+
+- [ ] Use a fresh out-of-tree build directory for final native verification.
+  This avoids relying on the existing `build/` directory.
+  ```bash
+  cmake -S . -B build-ae-final -DCMAKE_BUILD_TYPE=Release
+  cmake --build build-ae-final --target tests experiments -j4
+  ctest --test-dir build-ae-final --output-on-failure
+  cmake --build build-ae-final --target smoke-test-full -j4
+  ```
+
+- [ ] Record the final native results.
+  - CTest pass count.
+  - CTest runtime.
+  - `smoke-test-full` pass count and runtime.
+
+## 2. Final Docker Build
+
+- [ ] Rebuild the Docker image from the finalized source state.
+  ```bash
+  docker build -t quak-nqa . 2>&1 | tee docker-build-final.log
+  ```
+
+- [ ] Confirm the Docker build log includes the builder-stage CTest run.
+  ```bash
+  grep -F 'ctest --test-dir build --output-on-failure' docker-build-final.log
+  ```
+  A successful Docker build should mean the builder stage compiled the tool,
+  built tests and experiments, and passed CTest.
+
+- [ ] Keep `docker-build-final.log` as a local validation note only. Do not
+  package it unless the artifact policy is intentionally changed.
+
+## 3. Docker Runtime Verification
+
+- [ ] Verify the runtime image immediately after the final Docker rebuild.
+  ```bash
+  docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
+  docker run --rm quak-nqa python3 /quak/experiment.py --help
+  docker run --rm quak-nqa python3 /quak/experiment_small.py --help
+  ```
+
+- [ ] Record the Docker smoke-test result.
+  Expected ending:
+  ```text
+  SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
+  ```
+
+## 4. Experiment Validation
+
+- [ ] Run the small representative experiment subset at least once.
+  Use the final native experiment binary.
+  ```bash
+  python3 experiment_small.py \
+    --exe ./build-ae-final/quak-experiment-single \
+    --outdir results/small
+  ```
+
+- [ ] Check the produced small CSV files.
+  - CSV files should be non-empty.
+  - No row should have status `INCONSISTENT`.
+  - Timeout or memory-limit statuses should be understood before proceeding.
+
+- [ ] Optionally run the full experiment suite for maximum final confidence.
+  This is the expensive run.
+  ```bash
+  python3 experiment.py \
+    --exe ./build-ae-final/quak-experiment-single \
+    --outdir results/full
+  ```
+
+- [ ] If the full run is performed, regenerate tables from the produced full
+  CSV directory.
+  ```bash
+  python3 results/csv_to_latex_figures.py results/full --no-compile
+  ```
+
+- [ ] Compare regenerated table structure and benchmark coverage with
+  `results/paper/`.
+  Exact runtimes may differ by machine. CSV names, columns, status categories,
+  and benchmark coverage should match the reference outputs.
+
+- [ ] Do not package `results/small/` or `results/full/` unless the artifact
+  policy is intentionally changed. The packaging script includes the reference
+  `results/paper/` files and the table-generation script.
+
+## 5. Save And Verify The Docker Archive
+
+- [ ] Save the rebuilt image with the exact filename expected by the README and
+  packaging script.
+  ```bash
+  docker save quak-nqa | gzip > quak-nqa-docker-image.tar.gz
+  ```
+
+- [ ] Verify the saved Docker archive loads and runs.
+  ```bash
+  docker load < quak-nqa-docker-image.tar.gz
+  docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
+  ```
+
+## 6. macOS / Apple Check
+
+- [ ] On macOS, run a native source build if a machine is available.
+  ```bash
+  cmake -S . -B build-ae-final -DCMAKE_BUILD_TYPE=Release
+  cmake --build build-ae-final --target tests experiments -j4
+  ctest --test-dir build-ae-final --output-on-failure
+  ```
+
+- [ ] On macOS, load the packaged Docker image and run the quick smoke test.
+  ```bash
+  docker load < quak-nqa-docker-image.tar.gz
+  docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
+  ```
+
+- [ ] On Apple Silicon, check both Docker paths if possible.
+  - Packaged `linux/amd64` image through Docker Desktop emulation.
+  - Local Docker rebuild from `source/` for a native platform image:
     ```bash
+    cd source
     docker build -t quak-nqa .
-    ```
-  - Confirm that the Docker build runs the full CTest suite in the builder stage.
-  - Save the build log or record the commit/state used for the final image.
-
-- [x] Fix the Docker smoke-test command mismatch.
-  - Resolved by teaching `scripts/smoke-test.sh` to accept `--quick` as the
-    default quick smoke test mode.
-  - `.github/workflows/docker-build.yml` runs:
-    ```bash
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
-    ```
-  - Re-run the Docker smoke test after the fix.
-
-- [x] Fix runtime Docker contents needed by `experiment.py`.
-  - The runtime image now copies the helper imported by `experiment.py`:
-    ```text
-    src/archived/experiment_skip_oot_oom.py
-    ```
-  - Verify inside the container:
-    ```bash
-    docker run --rm quak-nqa python3 /quak/experiment.py --help
-    ```
-
-- [x] Decide whether the runtime image should include `experiment_small.py`.
-  - Decision: include it in the runtime image so reviewers can run the small
-    experiment subset from Docker.
-  - Verify inside the container:
-    ```bash
-    docker run --rm quak-nqa python3 /quak/experiment_small.py --help
-    ```
-
-- [ ] Decide whether the runtime image should include table-regeneration assets.
-  - Candidate files:
-    - `results/csv_to_latex_figures.py`
-    - `results/paper/*.csv`
-    - `results/paper/benchmark_tables.tex`
-    - `results/paper/benchmark_tables.pdf`
-  - If included, document exactly which outputs reviewers should compare.
-
-- [ ] Save the final Docker image.
-  - Example:
-    ```bash
-    docker save quak-nqa | gzip > quak-nqa-docker-image.tar.gz
-    ```
-  - Confirm the load command works on a clean machine:
-    ```bash
-    docker load < quak-nqa-docker-image.tar.gz
     docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
     ```
 
-- [ ] Create the final artifact zip.
-  - Include:
-    - Source code needed to build from scratch.
-    - `quak-nqa-docker-image.tar.gz`.
-    - `docs/AE_README.md`.
-    - `LICENSE`.
-    - Relevant `samples/`.
-    - Relevant `results/paper/`.
-    - Scripts needed for experiments and table generation.
-  - Exclude:
-    - Local build directories.
-    - Temporary logs unless intentionally included.
-    - Agent notes and local-only planning files.
+- [ ] If the macOS check requires changing `docs/AE_README.md`, go back to
+  Step 0 and rerun the affected build, validation, and packaging steps. The
+  runtime image must contain the final README wording.
 
-- [ ] Compute SHA256 checksums.
-  - At minimum:
-    ```bash
-    sha256sum quak-cav26-artifact.zip quak-nqa-docker-image.tar.gz > SHA256SUMS
-    ```
-  - Include `SHA256SUMS` in the upload if allowed.
+## 7. Build And Inspect The Artifact Zip
 
-- [ ] Upload to Zenodo.
-  - Upload the final zip.
-  - Record the version DOI.
-  - Prefer the version DOI over the concept DOI in the submission metadata.
-  - After upload, download the archive once and verify the checksum.
+- [ ] Create the final artifact zip with the packaging script.
+  ```bash
+  scripts/package-ae.sh
+  ```
 
-## Smoke Test
+- [ ] Save the zip listing for inspection.
+  ```bash
+  zipinfo -1 quak-cav26-artifact.zip | sort > /tmp/quak-ae-zip-files.txt
+  ```
 
-- [ ] Verify the shell smoke test from a clean native build.
-  - Commands:
-    ```bash
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-    cmake --build build --target smoke-test -j
-    cmake --build build --target smoke-test-full -j
-    ```
-  - Expected ending:
-    ```text
-    SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
-    ```
-  - Record actual wall time on the test machine.
+- [ ] Confirm every required file is present.
+  ```bash
+  required=(
+    quak-cav26-artifact/README_AE.md
+    quak-cav26-artifact/LICENSE
+    quak-cav26-artifact/quak-nqa-docker-image.tar.gz
+    quak-cav26-artifact/source/CMakeLists.txt
+    quak-cav26-artifact/source/Dockerfile
+    quak-cav26-artifact/source/README.md
+    quak-cav26-artifact/source/experiment.py
+    quak-cav26-artifact/source/experiment_small.py
+    quak-cav26-artifact/source/scripts/package-ae.sh
+    quak-cav26-artifact/source/scripts/smoke-test.sh
+    quak-cav26-artifact/source/docs/AE_README.md
+    quak-cav26-artifact/source/docs/CLI.md
+    quak-cav26-artifact/source/results/csv_to_latex_figures.py
+    quak-cav26-artifact/source/results/paper/benchmark_tables.tex
+    quak-cav26-artifact/source/results/paper/benchmark_tables.pdf
+  )
+  for path in "${required[@]}"; do
+    grep -qxF "$path" /tmp/quak-ae-zip-files.txt || {
+      echo "missing from artifact zip: $path"
+      exit 1
+    }
+  done
+  ```
 
-- [ ] Verify the smoke test through Docker on Ubuntu.
-  - Commands:
-    ```bash
-    docker build -t quak-nqa .
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
-    ```
-  - Confirm the smoke test passes from the runtime image, not only from the source tree.
+- [ ] Confirm required source directories are represented.
+  ```bash
+  for prefix in source/src/ source/samples/ source/examples/ source/results/paper/; do
+    grep -q "^quak-cav26-artifact/$prefix" /tmp/quak-ae-zip-files.txt || {
+      echo "missing source subtree: $prefix"
+      exit 1
+    }
+  done
+  ```
 
-- [ ] Verify the smoke test through Docker on macOS.
-  - Commands:
-    ```bash
-    docker load < quak-nqa-docker-image.tar.gz
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
-    ```
-  - Confirm Docker architecture compatibility, especially on Apple Silicon.
-  - If the artifact is x86_64-only, document that requirement clearly in `docs/AE_README.md`.
+- [ ] Confirm no forbidden local or self-referential files are present.
+  ```bash
+  forbidden='(^|/)SHA256SUMS$|(^|/)build/|(^|/)\.git/|quak-nqa-linux-amd64\.tar\.gz|source/results/(small|full)/|source/docs/(CAV_ARTIFACT_TODO|MERGE_TODO|MERGE_OVERRIDES)\.md|__pycache__|docker-build-final\.log'
+  if grep -E "$forbidden" /tmp/quak-ae-zip-files.txt; then
+    echo "forbidden file found in artifact zip"
+    exit 1
+  fi
+  echo "zip inspection passed"
+  ```
 
-- [ ] Verify CTest from a clean native build.
-  - Commands:
-    ```bash
-    cmake --build build --target tests -j
-    ctest --test-dir build --output-on-failure
-    ```
-  - Confirm all registered tests pass.
-  - Record the number of tests and total runtime.
+- [ ] Confirm the submitted top-level README matches the source README.
+  ```bash
+  tmpdir="$(mktemp -d)"
+  unzip -q quak-cav26-artifact.zip \
+    quak-cav26-artifact/README_AE.md \
+    quak-cav26-artifact/source/docs/AE_README.md \
+    -d "$tmpdir"
+  cmp -s \
+    "$tmpdir/quak-cav26-artifact/README_AE.md" \
+    "$tmpdir/quak-cav26-artifact/source/docs/AE_README.md"
+  ```
 
-## AE README
+## 8. Compute External Checksums
 
-- [ ] Fill the badge justification section in `docs/AE_README.md`.
-  - Explain why the artifact is **Available**.
-  - Explain why the artifact is **Reusable**.
-  - Mention that Reusable subsumes Functional, if following the CAV template wording.
+- [ ] Generate the external checksum file only after the final zip and final
+  Docker archive are fixed.
+  ```bash
+  sha256sum quak-cav26-artifact.zip quak-nqa-docker-image.tar.gz > SHA256SUMS
+  ```
 
-- [ ] Fill resource requirements.
-  - Replace TODOs for:
-    - RAM.
-    - CPU cores.
-    - Disk.
-    - Full-review time.
-  - Make requirements distinguish:
-    - Smoke test.
-    - Small experiment subset.
-    - Full paper experiment reproduction.
-    - Native build from source.
-    - Docker-only use.
+- [ ] Verify the checksum file.
+  ```bash
+  sha256sum -c SHA256SUMS
+  ```
 
-- [ ] Complete Docker load/run instructions.
-  - Include exact commands:
-    ```bash
-    docker load < quak-nqa-docker-image.tar.gz
-    docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
-    docker run --rm -it quak-nqa
-    ```
-  - Include the expected smoke-test output.
-  - Mention where the reviewer lands inside the container (`/quak`).
+- [ ] Keep `SHA256SUMS` beside the zip for Zenodo upload. Do not rebuild the
+  zip after this step unless the checksum file is regenerated.
 
-- [ ] Complete native build instructions.
-  - Include commands for:
-    - Configure.
-    - Build.
-    - Build tests.
-    - Run CTest.
-    - Build experiments.
-    - Run smoke test.
+## 9. Upload To Zenodo
 
-- [ ] Complete the full-review section.
-  - Include exact commands for:
-    - Running the small representative experiments.
-    - Running all configured experiments.
-    - Regenerating LaTeX tables from CSVs.
-    - Comparing regenerated outputs with `results/paper`.
-  - Clearly state which commands are expected to finish quickly and which may take hours.
+- [ ] Upload `quak-cav26-artifact.zip`.
+- [ ] Upload `SHA256SUMS` beside the zip.
+- [ ] Confirm the Zenodo record uses the version DOI recorded in
+  `docs/AE_README.md`.
+- [ ] Download the uploaded archive once.
+- [ ] Verify the downloaded archive checksum against `SHA256SUMS`.
 
-- [ ] Fill known limitations.
-  - Replace the remaining TODO.
-  - Keep Windows/MSVC limitation if still accurate.
-  - Add architecture limitations if Docker is x86_64-only.
-  - Mention any known timeouts or out-of-memory cells in paper tables.
+## Final Stop Conditions
 
-- [ ] Add troubleshooting notes.
-  - Docker permission errors.
-  - Missing Python.
-  - Missing LaTeX tools if PDF regeneration is optional.
-  - Expected behavior for timeout or OOM cells in the benchmark tables.
+The artifact is ready to submit only when all of these are true:
 
-## CI And Cross-Platform Checks
-
-- [ ] Verify GitHub Actions CI for regular build/test.
-  - Workflow:
-    - `.github/workflows/ci-build-and-test.yml`
-  - Windows has been removed from the matrix because it is not supported and
-    fails noisily.
-  - Confirm it builds tests before running `ctest`.
-  - Branch filters target `main`.
-
-- [ ] Verify GitHub Actions CI for Docker.
-  - Workflow:
-    - `.github/workflows/docker-build.yml`
-  - Branch filters target `main`.
-  - Confirm the `--quick` smoke command still matches `scripts/smoke-test.sh`.
-  - Confirm Docker build includes CTest.
-  - Confirm Docker runtime smoke test passes.
-
-- [ ] Check Ubuntu locally.
-  - Native build.
-  - CTest.
-  - Docker build.
-  - Docker smoke test.
-  - Small experiment subset, for example:
-    ```bash
-    python3 experiment_small.py
-    ```
-
-- [ ] Check macOS locally.
-  - Native build if supported.
-  - CTest.
-  - Docker load.
-  - Docker smoke test.
-  - Note any Apple Silicon caveats.
-
-## Licensing And Metadata
-
-- [ ] Add final artifact metadata to `docs/AE_README.md`.
-  - Artifact version.
-  - Zenodo DOI.
-  - SHA256 checksum.
-
-## Final Pre-Submission Checklist
-
-- [ ] Clean checkout builds natively.
-- [ ] Clean checkout passes CTest.
-- [ ] Docker image builds from clean checkout.
-- [ ] Docker image passes smoke test.
-- [ ] Docker image can run `experiment.py --help`.
-- [ ] Docker image can run `experiment_small.py --help` if included.
-- [ ] AE README has no TODO markers.
-- [ ] Packaged artifact zip has no accidental build artifacts.
-- [ ] Artifact zip includes Docker image tarball.
-- [ ] Artifact zip includes source, docs, license, samples, and paper results.
-- [ ] SHA256 checksum recorded.
-- [ ] Zenodo upload completed.
-- [ ] Zenodo DOI recorded in the submission.
-- [ ] Downloaded Zenodo archive checksum matches the local checksum.
+- [ ] `docs/AE_README.md` has final version, version DOI, and checksum policy.
+- [ ] Native final build and CTest passed from `build-ae-final/`.
+- [ ] Docker final build passed and its builder stage ran CTest.
+- [ ] Docker runtime smoke test passed from the final image.
+- [ ] `experiment.py --help` and `experiment_small.py --help` passed in Docker.
+- [ ] Small experiment validation was run at least once.
+- [ ] macOS / Apple result is known and README wording matches it.
+- [ ] Final zip was built by `scripts/package-ae.sh`.
+- [ ] Final zip inspection found required files and no forbidden files.
+- [ ] External `SHA256SUMS` verifies locally.
+- [ ] Zenodo upload was downloaded and checksum-verified.
