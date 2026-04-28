@@ -33,6 +33,9 @@ quak-cav26-artifact/
     samples/
     examples/
     docs/
+      AE_README.md
+      CLI.md
+      cav-paper110-updatedTables.pdf
     results/
       csv_to_latex_figures.py
       paper/
@@ -47,6 +50,13 @@ experiment drivers, reference paper CSV files, and the table-generation script.
 The checked-in `source/results/paper/` files are reference outputs. Reviewers
 who run the experiments should regenerate tables from their own generated CSV
 directory.
+
+The artifact also includes `source/docs/cav-paper110-updatedTables.pdf`, a copy
+of the paper with the artifact reference tables included. The same tables are
+provided separately as `source/results/paper/benchmark_tables.pdf` to make
+comparison with regenerated experiment results easier. These artifact tables
+were refreshed after the submitted manuscript, so the reported benchmark
+results differ slightly from the submitted version.
 
 External network connectivity is not required for loading and running the
 packaged Docker image or for native source builds once the listed tools are
@@ -281,6 +291,7 @@ Before submission, the final package should satisfy:
 - `quak-nqa-docker-image.tar.gz` loads successfully with `docker load`.
 - `docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick` passes.
 - The `source/` snapshot builds natively with the commands above.
+- `source/docs/cav-paper110-updatedTables.pdf` is present.
 - The `source/results/paper/` reference CSVs and table outputs are present.
 
 ## Justification for the Badges

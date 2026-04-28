@@ -139,6 +139,7 @@ done < <(
     src \
     docs/AE_README.md \
     docs/CLI.md \
+    docs/cav-paper110-updatedTables.pdf \
     results/csv_to_latex_figures.py \
     results/paper
 )
@@ -147,7 +148,10 @@ done < <(
 # committed.
 copy_file "scripts/build-docker.sh" "$SOURCE_ROOT/scripts/build-docker.sh"
 copy_file "scripts/package-ae.sh" "$SOURCE_ROOT/scripts/package-ae.sh"
+copy_file "docs/cav-paper110-updatedTables.pdf" "$SOURCE_ROOT/docs/cav-paper110-updatedTables.pdf"
 
+[[ -f "$SOURCE_ROOT/docs/cav-paper110-updatedTables.pdf" ]] \
+  || die "source snapshot is missing docs/cav-paper110-updatedTables.pdf"
 [[ -f "$SOURCE_ROOT/results/csv_to_latex_figures.py" ]] \
   || die "source snapshot is missing results/csv_to_latex_figures.py"
 [[ -d "$SOURCE_ROOT/results/paper" ]] \

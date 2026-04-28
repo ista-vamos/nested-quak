@@ -200,6 +200,7 @@ packaging steps.
     quak-cav26-artifact/source/scripts/smoke-test.sh
     quak-cav26-artifact/source/docs/AE_README.md
     quak-cav26-artifact/source/docs/CLI.md
+    quak-cav26-artifact/source/docs/cav-paper110-updatedTables.pdf
     quak-cav26-artifact/source/results/csv_to_latex_figures.py
     quak-cav26-artifact/source/results/paper/benchmark_tables.tex
     quak-cav26-artifact/source/results/paper/benchmark_tables.pdf
