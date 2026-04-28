@@ -95,8 +95,13 @@ done
 need_command git
 need_command zip
 
-[[ -f "$DOCKER_IMAGE_TAR" ]] || die "missing Docker image archive: $DOCKER_IMAGE_TAR"
 [[ -f "$REPO_ROOT/docs/AE_README.md" ]] || die "missing docs/AE_README.md"
+
+if grep -nE 'pending|TODO|TBD' "$REPO_ROOT/docs/AE_README.md"; then
+  die "docs/AE_README.md contains unresolved placeholders"
+fi
+
+[[ -f "$DOCKER_IMAGE_TAR" ]] || die "missing Docker image archive: $DOCKER_IMAGE_TAR"
 
 DOCKER_IMAGE_TAR="$(cd "$(dirname "$DOCKER_IMAGE_TAR")" && pwd)/$(basename "$DOCKER_IMAGE_TAR")"
 mkdir -p "$(dirname "$OUTPUT_ZIP")"

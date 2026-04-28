@@ -2,6 +2,9 @@
 
 QuAK is an open source C++ library for analyzing quantitative automata. This version extends the original QuAK with support for **nested quantitative automata (NQA)** -- hierarchical automata where a parent automaton invokes finite-word child automata during its infinite run.
 
+For the development history of the nested extension, see:
+https://github.com/Kj0ric/QuAK
+
 ## Overview
 
 A nested quantitative automaton consists of:
