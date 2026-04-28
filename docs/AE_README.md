@@ -27,6 +27,8 @@ quak-cav26-artifact/
     experiment.py
     experiment_small.py
     scripts/
+      build-docker.sh
+      smoke-test.sh
     src/
     samples/
     examples/
@@ -46,7 +48,10 @@ The checked-in `source/results/paper/` files are reference outputs. Reviewers
 who run the experiments should regenerate tables from their own generated CSV
 directory.
 
-External network connectivity is not required.
+External network connectivity is not required for loading and running the
+packaged Docker image or for native source builds once the listed tools are
+installed. Rebuilding the Docker image from `source/` may require network
+access unless the base image and package-manager layers are already cached.
 
 ## Requirements
 
@@ -56,7 +61,7 @@ External network connectivity is not required.
 | CPU cores | 4+ cores recommended; commands below use `-j4` |
 | Disk | 2 GB free recommended for normal review; 5 GB if rebuilding the Docker image from source |
 | Architecture | x86_64 Docker image; native source build is intended for Linux and macOS |
-| External connectivity | Not required |
+| External connectivity | Not required for the packaged Docker image path; Docker rebuild may need network |
 
 Approximate running times on the authors' evaluation machine:
 
@@ -110,11 +115,12 @@ a native Docker image for their platform may instead rebuild from the
 `source/` directory:
 
 ```bash
-docker build -t quak-nqa .
+scripts/build-docker.sh
 ```
 
-The Docker build runs the registered CTest suite in the builder stage, so a
-successful rebuild also verifies the packaged source on that platform.
+The Docker build runs the registered CTest suite in the builder stage. The
+wrapper then runs the quick smoke test in the rebuilt image, so a successful
+run verifies both the packaged source and the runtime image on that platform.
 
 ### From Source
 

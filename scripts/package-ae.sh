@@ -143,7 +143,9 @@ done < <(
     results/paper
 )
 
-# Include this script in mechanics checks before it has been committed.
+# Include reviewer-facing scripts in mechanics checks before they have been
+# committed.
+copy_file "scripts/build-docker.sh" "$SOURCE_ROOT/scripts/build-docker.sh"
 copy_file "scripts/package-ae.sh" "$SOURCE_ROOT/scripts/package-ae.sh"
 
 [[ -f "$SOURCE_ROOT/results/csv_to_latex_figures.py" ]] \
