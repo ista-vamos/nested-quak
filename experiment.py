@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run every configured QuAK experiment input without resume or abort skips."""
+"""Run every configured QuAK experiment input."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import csv
 import importlib.util
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 
 def load_base_module():
@@ -41,6 +41,8 @@ CSV_HEADER = [
     "mean_s",
     "result01",
 ]
+
+COMPLETED_STATUSES = {"OK", "OOT", "OOM", "TIMEOUT"}
 
 
 def discover_inputs(directory: Path) -> Tuple[List[Tuple[int, int, Path]], int]:
@@ -80,6 +82,32 @@ def open_output(csv_path: Path, append: bool):
         w.writerow(CSV_HEADER)
         f.flush()
     return f, w
+
+
+def load_completed_pairs(csv_path: Path) -> Set[Tuple[int, int]]:
+    """Return (n, k) pairs with completed benchmark outcomes in an existing CSV."""
+    completed: Set[Tuple[int, int]] = set()
+    if not csv_path.exists():
+        return completed
+
+    try:
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = set(reader.fieldnames or [])
+            if not {"n", "k", "status"}.issubset(fieldnames):
+                return completed
+            for row in reader:
+                status = row.get("status", "").strip().upper()
+                if status not in COMPLETED_STATUSES:
+                    continue
+                try:
+                    completed.add((int(row["n"]), int(row["k"])))
+                except (TypeError, ValueError):
+                    continue
+    except OSError:
+        return completed
+
+    return completed
 
 
 def print_status(status: str, mean_s: float, result01: int, err: str, rc: int) -> None:
@@ -130,10 +158,20 @@ def run_experiment_all_inputs(
         f"[{exp.name}] running {len(inputs)} inputs from {exp.input_dir} -> {exp.out_csv}",
         flush=True,
     )
+    completed = load_completed_pairs(exp.out_csv) if append else set()
+    if completed:
+        print(
+            f"[{exp.name}] --append: skipping {len(completed)} completed rows "
+            f"(statuses: {', '.join(sorted(COMPLETED_STATUSES))})",
+            flush=True,
+        )
 
     f, w = open_output(exp.out_csv, append=append)
     with f:
         for idx, (n, k, file_path) in enumerate(inputs, start=1):
+            if (n, k) in completed:
+                continue
+
             threshold = threshold_for(exp, k)
             print(
                 f"[{exp.name}] {idx}/{len(inputs)} n={n} k={k} "
@@ -173,6 +211,8 @@ def run_experiment_all_inputs(
                 (result01 if status in ("OK", "INCONSISTENT") else ""),
             ])
             f.flush()
+            if csv_status(status).upper() in COMPLETED_STATUSES:
+                completed.add((n, k))
 
 
 def build_experiments(outdir: Path) -> List[base.Experiment]:
@@ -238,7 +278,7 @@ def build_experiments(outdir: Path) -> List[base.Experiment]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Run all configured QuAK experiment inputs without skipping."
+        description="Run all configured QuAK experiment inputs."
     )
     ap.add_argument(
         "--exe",
@@ -262,7 +302,10 @@ def main() -> int:
     ap.add_argument(
         "--append",
         action="store_true",
-        help="Append rows to existing CSVs. The script still runs every input.",
+        help=(
+            "Append rows to existing CSVs and skip rows already completed with "
+            "status OK, OOT, or OOM. ERR, KILLED, and INCONSISTENT rows are rerun."
+        ),
     )
     args = ap.parse_args()
 

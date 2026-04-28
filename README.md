@@ -490,7 +490,10 @@ Example:
 
 ### Python Orchestrator (`experiment.py`)
 
-Runs all configured experiments in batch, with resume support (skips already-completed `(n, k)` pairs).
+Runs all configured experiments in batch. By default, existing CSVs in the
+output directory are overwritten. With `--append`, the script resumes from
+existing CSVs by skipping already-completed `(n, k)` rows whose status is `OK`,
+`OOT`, or `OOM`; rows with `ERR`, `KILLED`, or `INCONSISTENT` are rerun.
 
 ```bash
 python3 experiment.py --exe ./build/quak-experiment-single \
@@ -503,8 +506,9 @@ python3 experiment.py --exe ./build/quak-experiment-single \
 | `--rep` | 3 | Repetitions per instance |
 | `--timeout` | 300 | Per-repetition timeout (seconds) |
 | `--warmup` | 1 | Warmup (0 or 1) |
-| `--memory-limit` | none | Memory limit per process (e.g. `30G`, `8192M`) |
+| `--memory-limit` | `30G` | Memory limit per process (e.g. `30G`, `8192M`) |
 | `--outdir` | `results/full` | Output directory for CSV files |
+| `--append` | off | Append to existing CSVs and skip completed `OK`/`OOT`/`OOM` rows |
 
 **Configured experiments:**
 

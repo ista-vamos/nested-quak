@@ -56,8 +56,10 @@ are useful triage data, not final submission evidence.
   regenerated `results/paper/benchmark_tables.tex` without changing Git status.
 - `scripts/build-docker.sh --help`, `scripts/package-ae.sh --help`,
   `python3 experiment.py --help`, and `python3 experiment_small.py --help` run.
-- Current modified files are `README.md`, `docs/CAV_ARTIFACT_TODO.md`, and
-  `scripts/package-ae.sh`.
+- Current modified files include `README.md`, `docs/AE_README.md`,
+  `docs/CAV_ARTIFACT_TODO.md`, `experiment.py`, `experiment_small.py`,
+  `results/csv_to_latex_figures.py`, and `results/paper/benchmark_tables.pdf`.
+  Resolve whether the PDF change is intentional before final packaging.
 - No final artifact zip, Docker image tarball, or `SHA256SUMS` file is present
   in the repository root.
 
@@ -79,12 +81,11 @@ Current blockers:
 - The full paper experiment suite has not been rerun from the final source, or
   explicitly documented as already represented by trusted reference outputs.
 - macOS / Apple Silicon validation is not recorded.
-- `README.md` says `experiment.py` has resume support, but the current script
-  does not skip completed rows; `--append` still reruns selected inputs. Fix the
-  documentation or add real resume support.
-- `results/csv_to_latex_figures.py` imports `pandas`, but the artifact
-  requirements text currently emphasizes Python 3 and LaTeX only. Either remove
-  the pandas dependency or document and provide it.
+- `experiment.py` and `experiment_small.py` now support `--append` resume
+  behavior by skipping completed `OK`, `OOT`, and `OOM` rows while rerunning
+  problematic statuses.
+- `results/csv_to_latex_figures.py` now uses the Python standard-library
+  `csv` module, so table generation no longer requires `pandas`.
 - `.dockerignore` excludes `results/`, and the runtime Docker image currently
   does not copy `results/csv_to_latex_figures.py` or `results/paper/`. That is
   acceptable only if the README clearly says table regeneration is a source
@@ -176,18 +177,18 @@ stale image.
   - Add or verify a troubleshooting section for Docker memory, Apple Silicon
     emulation, and native build dependencies.
 
-- [ ] Fix the Python/table dependency story.
-  - Preferred: rewrite `results/csv_to_latex_figures.py` to use the Python
-    standard-library `csv` module instead of `pandas`.
-  - Acceptable alternative: document `pandas` as a dependency in
-    `docs/AE_README.md`, README, and Docker/source setup instructions.
+- [ ] Verify the Python/table dependency story.
+  - `results/csv_to_latex_figures.py` should keep using only the Python
+    standard library for CSV parsing.
   - Strongest reusable path: make table generation work inside Docker too by
     copying `results/csv_to_latex_figures.py` and `results/paper/` into the
-    runtime image and installing or eliminating required Python dependencies.
+    runtime image. This is optional if the README clearly says table
+    regeneration is a source workflow.
 
-- [ ] Fix stale experiment documentation.
-  - In `README.md`, remove the statement that `experiment.py` has resume support
-    unless real skip-existing-row behavior is implemented.
+- [ ] Verify experiment documentation.
+  - In `README.md`, confirm the `--append` resume behavior is described as
+    skipping completed `OK`, `OOT`, and `OOM` rows while rerunning `ERR`,
+    `KILLED`, and `INCONSISTENT`.
   - Ensure `README.md`, `docs/AE_README.md`, and `experiment.py --help` agree
     on `--append`, output locations, defaults, timeout, warmup, and memory
     limits.
@@ -862,7 +863,7 @@ The artifact is ready only when every item below is true:
 - [ ] `docs/AE_README.md` contains final artifact version and Zenodo version DOI.
 - [ ] `docs/AE_README.md` has no `pending`, `TODO`, or `TBD` placeholders.
 - [ ] Dependency documentation is accurate, including the table-generation path.
-- [ ] `README.md` no longer claims nonexistent resume support.
+- [ ] `README.md` accurately documents `--append` resume behavior and defaults.
 - [ ] Fresh native build from `build-ae-final/` passed.
 - [ ] CTest passed 16/16 from the fresh build.
 - [ ] Native `smoke-test-full` passed 17/17 from the fresh build.
@@ -891,7 +892,8 @@ Do not spend the last hour on optional polish. Do this minimum sequence:
 
 1. Finalize `docs/AE_README.md` version, DOI, connectivity, and badges.
 2. Fix the `README.md` resume-support mismatch.
-3. Resolve or document the `pandas` table-generation dependency.
+3. Verify reference table generation still works without non-standard Python
+   dependencies.
 4. Run fresh native CTest and `smoke-test-full`.
 5. Rebuild Docker after metadata is final.
 6. Run Docker quick smoke test.

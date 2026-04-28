@@ -71,9 +71,21 @@ def run_small_experiment(
     available = {
         (n, k): path for n, k, path in runner.discover_inputs(exp.input_dir)[0]
     }
+    completed = runner.load_completed_pairs(exp.out_csv) if append else set()
+    skip_count = sum(1 for pair in pairs if pair in completed)
+    if skip_count:
+        print(
+            f"[{exp.name}] --append: skipping {skip_count} completed selected rows "
+            f"(statuses: {', '.join(sorted(runner.COMPLETED_STATUSES))})",
+            flush=True,
+        )
+
     f, w = runner.open_output(exp.out_csv, append=append)
     with f:
         for idx, (n, k) in enumerate(pairs, start=1):
+            if (n, k) in completed:
+                continue
+
             file_path = available.get((n, k))
             if file_path is None:
                 print(
@@ -124,6 +136,8 @@ def run_small_experiment(
                 (result01 if status in ("OK", "INCONSISTENT") else ""),
             ])
             f.flush()
+            if runner.csv_status(status).upper() in runner.COMPLETED_STATUSES:
+                completed.add((n, k))
 
     return ok
 
@@ -154,7 +168,10 @@ def main() -> int:
     ap.add_argument(
         "--append",
         action="store_true",
-        help="Append rows to existing CSVs. The script still runs every selected input.",
+        help=(
+            "Append rows to existing CSVs and skip selected rows already completed "
+            "with status OK, OOT, or OOM. ERR, KILLED, and INCONSISTENT rows are rerun."
+        ),
     )
     args = ap.parse_args()
 

@@ -22,6 +22,7 @@ Outputs two table groups:
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 import shutil
 import subprocess
@@ -29,8 +30,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
-
-import pandas as pd
 
 
 LATEX_INDENT = "\t"
@@ -82,24 +81,28 @@ def status_to_cell(status: str, mean_s: Optional[float]) -> str:
 
 
 def load_cells(csv_path: Path) -> Dict[Tuple[int, int], str]:
-    df = pd.read_csv(csv_path)
-    
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames = set(reader.fieldnames or [])
+        rows = list(reader)
+
     required = {"n", "k", "status"}
-    missing = sorted(required - set(df.columns))
+    missing = sorted(required - fieldnames)
     if missing:
         raise ValueError(f"{csv_path}: missing required columns: {missing}")
-    
-    if "mean_s" not in df.columns:
+
+    if "mean_s" not in fieldnames:
         raise ValueError(f"{csv_path}: missing column 'mean_s'")
-    
+
     cells: Dict[Tuple[int, int], str] = {}
-    for row in df.itertuples(index=False):
-        n = int(getattr(row, "n"))
-        k = int(getattr(row, "k"))
-        status = str(getattr(row, "status"))
-        mean_s = getattr(row, "mean_s")
+    for row in rows:
+        n = int(row["n"])
+        k = int(row["k"])
+        status = row["status"]
+        mean_s_raw = row.get("mean_s", "").strip()
+        mean_s = float(mean_s_raw) if mean_s_raw else None
         cells[(n, k)] = status_to_cell(status, mean_s)
-    
+
     return cells
 
 

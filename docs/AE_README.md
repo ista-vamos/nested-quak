@@ -4,9 +4,9 @@
 
 **Claimed badges:** Available + Reusable (see below for justification)
 
-**Artifact version:** pending final package
+**Artifact version:** v1.0-cav26-ae
 
-**Zenodo DOI:** pending upload
+**Zenodo DOI:** 10.5281/zenodo.19844607
 
 **Checksums:** `SHA256SUMS` will be uploaded beside the final package on
 Zenodo.
