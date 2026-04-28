@@ -132,6 +132,7 @@ while IFS= read -r -d '' path; do
   cp -p "$REPO_ROOT/$path" "$SOURCE_ROOT/$path"
 done < <(
   git -C "$REPO_ROOT" ls-files -z -- \
+    .dockerignore \
     CMakeLists.txt \
     Dockerfile \
     README.md \

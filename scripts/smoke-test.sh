@@ -16,9 +16,10 @@
 #                         benchmark inputs (samples/generated_*_N) are present. Catches
 #                         missing files that would make experiment.py silently
 #                         run zero instances or quak-nested fail to open inputs.
-#   [3] Python env      — python3 is installed and experiment.py can be loaded
-#                         and its argument parser initialised. Catches a missing
-#                         interpreter or an import error in the experiment script.
+#   [3] Python env      — python3 is installed, experiment drivers can be
+#                         loaded, and table-generation tooling is present.
+#                         Catches a missing interpreter or import/startup error
+#                         before the later experiment sections are attempted.
 #   [4] Decision procs  — quak-nested is invoked once per major flattening path
 #                         on a small representative input. Confirms the binary
 #                         reads input and produces output in the expected format
@@ -84,6 +85,8 @@ QUAK_EXP="${QUAK_EXP:-$REPO_ROOT/quak-experiment-single}"
 BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
 SAMPLES="$REPO_ROOT/samples"
 INPUTS="$SAMPLES/tests/correctness"
+RESULTS="$REPO_ROOT/results"
+PAPER_RESULTS="$RESULTS/paper"
 SECTIONS=4
 if [[ "$MODE" == "full" ]]; then
   SECTIONS=5
@@ -180,6 +183,29 @@ else
   FAIL=$((FAIL + 1))
 fi
 
+MISSING_REFERENCE=()
+for file in \
+  response_sup_sumplus_emptiness.csv \
+  response_limsupavg_sumplus_emptiness.csv \
+  response_sup_sumb_universality.csv \
+  resource_sup_max_emptiness.csv \
+  resource_limsupavg_max_emptiness.csv \
+  benchmark_tables.tex \
+  benchmark_tables.pdf
+do
+  if [[ ! -f "$PAPER_RESULTS/$file" ]]; then
+    MISSING_REFERENCE+=("results/paper/$file")
+  fi
+done
+
+if [[ "${#MISSING_REFERENCE[@]}" -eq 0 ]]; then
+  echo "  PASS [reference paper CSVs and tables present]"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL [reference paper outputs] -- missing: ${MISSING_REFERENCE[*]}"
+  FAIL=$((FAIL + 1))
+fi
+
 # -----------------------------------------------------------------------
 # Section 3 — Python environment and experiment script
 # Verifies that python3 is installed and that experiment.py can be loaded
@@ -190,6 +216,10 @@ echo "==> [3/$SECTIONS] Checking Python environment and experiment script..."
 run_check "python3 is available" "Python 3" python3 --version
 run_check "experiment.py loads and accepts --help" \
   "usage" python3 "$REPO_ROOT/experiment.py" --help
+run_check "experiment_small.py loads and accepts --help" \
+  "usage" python3 "$REPO_ROOT/experiment_small.py" --help
+run_check "table generator loads and accepts --help" \
+  "usage" python3 "$RESULTS/csv_to_latex_figures.py" --help
 
 # -----------------------------------------------------------------------
 # Section 4 — Decision procedure CLI checks

@@ -8,8 +8,24 @@
 
 **Zenodo DOI:** 10.5281/zenodo.19844607
 
-**Checksums:** `SHA256SUMS` will be uploaded beside the final package on
-Zenodo.
+**Checksums:** `SHA256SUMS` is uploaded beside the final package on Zenodo.
+After downloading both files, verify the artifact zip with:
+
+```bash
+grep 'quak-cav26-artifact.zip' SHA256SUMS | sha256sum -c -
+```
+
+To also verify the Docker image archive bundled inside the zip:
+
+```bash
+checksums="$PWD/SHA256SUMS"
+tmpdir="$(mktemp -d)"
+unzip -q quak-cav26-artifact.zip -d "$tmpdir"
+(
+  cd "$tmpdir/quak-cav26-artifact"
+  grep 'quak-nqa-docker-image.tar.gz' "$checksums" | sha256sum -c -
+)
+```
 
 ## Artifact Contents
 
@@ -22,12 +38,14 @@ quak-cav26-artifact/
   quak-nqa-docker-image.tar.gz
   source/
     CMakeLists.txt
+    .dockerignore
     Dockerfile
     README.md
     experiment.py
     experiment_small.py
     scripts/
       build-docker.sh
+      package-ae.sh
       smoke-test.sh
     src/
     samples/
@@ -44,12 +62,13 @@ quak-cav26-artifact/
         benchmark_tables.pdf
 ```
 
-The Docker image is the recommended entry point for smoke testing. The
-`source/` directory contains the complete source snapshot, tests, samples,
-experiment drivers, reference paper CSV files, and the table-generation script.
-The checked-in `source/results/paper/` files are reference outputs. Reviewers
-who run the experiments should regenerate tables from their own generated CSV
-directory.
+The Docker image is the recommended entry point for smoke testing and for
+running experiments. It contains the binaries, generated benchmark inputs,
+experiment drivers, table-generation script, and reference paper CSVs/tables.
+The `source/` directory contains the complete source snapshot with the same
+experiment and table-generation workflow. The checked-in
+`source/results/paper/` files are reference outputs. Reviewers can run the
+experiments and regenerate tables from their own generated CSV directory.
 
 The artifact also includes `source/docs/cav-paper110-updatedTables.pdf`, a copy
 of the paper with the artifact reference tables included. The same tables are
@@ -67,7 +86,7 @@ access unless the base image and package-manager layers are already cached.
 
 | Resource | Requirement |
 |----------|-------------|
-| RAM | 30 GB recommended for full experiments; less is sufficient for build, smoke test, and CTest |
+| RAM | 32 GB recommended for full experiments; less is sufficient for build, smoke test, and CTest |
 | CPU cores | 4+ cores recommended; commands below use `-j4` |
 | Disk | 2 GB free recommended for normal review; 5 GB if rebuilding the Docker image from source |
 | Architecture | x86_64 Docker image; native source build is intended for Linux and macOS |
@@ -88,13 +107,10 @@ per-instance timeout and a 30 GB memory limit by default.
 
 ## Smoke Test
 
-The quick smoke test verifies that the packaged tool is installed correctly and
-runs without error. It exercises each major decision procedure on a small
-representative input to confirm the binary starts, reads input, and produces
-output in the expected format. It does not verify paper claims; that is the
-goal of the full review.
+The quick smoke test checks that the artifact loads, finds its inputs, starts
+Python, and exercises the main decision-procedure paths on small fixtures.
 
-### Using Docker
+### Path A: Prebuilt Docker Image
 
 Load the packaged image and run the quick smoke test:
 
@@ -106,7 +122,7 @@ docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick
 Expected output ends with:
 
 ```text
-SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
+SMOKE PASSED (quick) -- 19/19 checks, <time>s wall
 ```
 
 For an interactive shell inside the container:
@@ -119,12 +135,15 @@ The shell starts in `/quak`. From there, reviewers can run
 `scripts/smoke-test.sh --quick`, inspect `samples/`, or invoke the main CLI
 with `./quak-nested`.
 
+### Path B: Rebuild Docker Image From Source
+
 The packaged Docker image is built for `linux/amd64`. On Apple Silicon Macs,
-Docker Desktop can usually run this image through emulation. Reviewers who want
-a native Docker image for their platform may instead rebuild from the
-`source/` directory:
+Docker Desktop can usually run Path A through emulation. Reviewers who want a
+native Docker image for their platform may instead rebuild from the `source/`
+directory:
 
 ```bash
+cd source
 scripts/build-docker.sh
 ```
 
@@ -132,25 +151,27 @@ The Docker build runs the registered CTest suite in the builder stage. The
 wrapper then runs the quick smoke test in the rebuilt image, so a successful
 run verifies both the packaged source and the runtime image on that platform.
 
-### From Source
+### Path C: Native Source Build
 
 From the `source/` directory:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target smoke-test -j4
+cmake --build build --target tests experiments examples -j4
+ctest --test-dir build --output-on-failure
+cmake --build build --target smoke-test-full -j4
 ```
 
 Expected output ends with:
 
 ```text
-SMOKE PASSED (quick) -- 16/16 checks, <time>s wall
+SMOKE PASSED (full) -- 20/20 checks, <time>s wall
 ```
 
-To run the quick smoke test plus the registered CTest suite:
+If only the quick smoke test is desired after building:
 
 ```bash
-cmake --build build --target smoke-test-full -j4
+cmake --build build --target smoke-test -j4
 ```
 
 ## Native Build And Tests
@@ -176,7 +197,20 @@ the same machinery on a representative subset.
 
 ### Small Representative Experiments
 
-From the `source/` directory after building the `experiments` target:
+After Path A or Path B, run the small experiment subset in Docker from a
+writable host directory:
+
+```bash
+mkdir -p results-docker
+docker run --rm \
+  -v "$PWD/results-docker:/quak/results-out" \
+  quak-nqa \
+  python3 /quak/experiment_small.py \
+    --exe /quak/quak-experiment-single \
+    --outdir /quak/results-out/small
+```
+
+After Path C, run the same subset from the `source/` directory:
 
 ```bash
 python3 experiment_small.py \
@@ -186,20 +220,22 @@ python3 experiment_small.py \
 
 This run takes about 1 hour 15 minutes on the authors' evaluation machine.
 
-Inside Docker, use a bind mount if the generated CSVs should be kept outside
-the container:
+### Full Paper Experiments
+
+After Path A or Path B, run the full experiment suite in Docker from a writable
+host directory:
 
 ```bash
 mkdir -p results-docker
 docker run --rm \
-  -v "$PWD/results-docker:/quak/results" \
+  -v "$PWD/results-docker:/quak/results-out" \
   quak-nqa \
-  python3 /quak/experiment_small.py --outdir /quak/results/small
+  python3 /quak/experiment.py \
+    --exe /quak/quak-experiment-single \
+    --outdir /quak/results-out/full
 ```
 
-### Full Paper Experiments
-
-From the `source/` directory after building the `experiments` target:
+After Path C, run the same suite from the `source/` directory:
 
 ```bash
 python3 experiment.py \
@@ -209,17 +245,6 @@ python3 experiment.py \
 
 This run takes about 5 hours on the authors' evaluation machine. It uses the
 default 300 second per-instance timeout and 30 GB memory limit.
-
-The same full experiment driver can also be run from Docker with persisted
-outputs:
-
-```bash
-mkdir -p results-docker
-docker run --rm \
-  -v "$PWD/results-docker:/quak/results" \
-  quak-nqa \
-  python3 /quak/experiment.py --outdir /quak/results/full
-```
 
 The configured experiment families are:
 
@@ -247,8 +272,21 @@ and are represented explicitly in the paper tables.
 ## Regenerating Tables
 
 The final artifact includes reference tables and CSVs in
-`source/results/paper/`. To regenerate tables after running the full
-experiments, run the table script on the new CSV directory:
+`source/results/paper/`; the Docker image includes the same files under
+`/quak/results/paper/`.
+
+After running the full experiments in Docker, regenerate the LaTeX tables with:
+
+```bash
+docker run --rm \
+  -v "$PWD/results-docker:/quak/results-out" \
+  quak-nqa \
+  python3 /quak/results/csv_to_latex_figures.py \
+    /quak/results-out/full --no-compile
+```
+
+After running the full experiments through Path C, run the table script from
+the `source/` directory:
 
 ```bash
 python3 results/csv_to_latex_figures.py results/full --no-compile
@@ -256,14 +294,16 @@ python3 results/csv_to_latex_figures.py results/full --no-compile
 
 This writes `results/full/benchmark_tables.tex`.
 
-If LaTeX tools are installed and a PDF is desired:
+If LaTeX tools are installed and a PDF is desired in the native source
+workflow:
 
 ```bash
 python3 results/csv_to_latex_figures.py results/full
 ```
 
 This writes both `results/full/benchmark_tables.tex` and
-`results/full/benchmark_tables.pdf`.
+`results/full/benchmark_tables.pdf`. The Docker runtime image intentionally
+uses `--no-compile` and does not include a LaTeX distribution.
 
 Compare the regenerated files with the reference files under
 `results/paper/`. Exact runtimes may differ by machine, but the CSV structure,
@@ -277,8 +317,7 @@ status categories, and benchmark coverage should match.
   through Docker Desktop emulation. Rebuilding the image from `source/` can
   produce a native image for the local platform.
 - **Benchmark scale:** some full benchmark cells may time out or exceed the
-  30 GB memory limit. These outcomes are expected benchmark data, not smoke-test
-  failures.
+  30 GB memory limit. These outcomes are expected benchmark data.
 
 ## Final Package Checklist
 
@@ -300,14 +339,12 @@ Before submission, the final package should satisfy:
 
 **Q: Does the artifact have a DOI?**
 
-A: The final artifact will be uploaded to Zenodo. The version-specific DOI will
-be listed at the top of this README after upload.
+A: The final artifact is uploaded to Zenodo with a version-specific DOI.
 
 **Q: Does the artifact have an appropriate license?**
 
 A: Yes. The project is distributed under the MIT License, which permits use,
-examination, modification, redistribution, and reuse within and outside CAV
-2026 Artifact Evaluation.
+examination, modification, redistribution, and reuse.
 
 **Q: Is the artifact self-contained for evaluation?**
 
